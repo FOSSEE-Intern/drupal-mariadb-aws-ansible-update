@@ -1,0 +1,58 @@
+---
+- hosts: all
+  gather_facts: no
+  become: yes
+
+  vars_files:
+    - vars.yml
+
+  tasks:
+    - name: Install php and other dependencies
+      dnf:
+        name:
+          - git
+          - '@php:8.2'
+          - php-fpm
+          - php-gd
+          - php-mysqlnd
+          - nginx
+        state: present
+
+    - name: Download Composer installer.
+      get_url:
+        url: https://getcomposer.org/installer
+        dest: /tmp/composer-installer.php
+        mode: 0755
+
+    - name: Install composer
+      command: 
+        cmd: php composer-installer.php
+        chdir: /tmp
+        creates: /tmp/composer.phar
+
+    - name: Move composer to a globally accessible directory
+      command:
+        cmd: mv /tmp/composer.phar /usr/local/bin/composer
+        creates: /usr/local/bin/composer
+
+    - name: Check if drupal project already exists
+      stat:
+        path: "{{ drupal_site_path }}/composer.json"
+      register: drupal_composer_json
+
+    - name: Update drupal with it's dependencies
+      composer:
+        command: update
+        arguments: "drupal/core-* --with-all-dependencies"
+        working_dir: "{{ drupal_site_path }}"
+      when: drupal_composer_json.stat.exists
+
+    - name: Start nginx 
+      systemd_service:
+        name: php-fpm.service
+        state: reloaded
+
+    - name: Start nginx 
+      systemd_service:
+        name: nginx.service
+        state: reloaded
